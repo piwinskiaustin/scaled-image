@@ -48,6 +48,29 @@ const bulkAllRowsBtn = document.getElementById("bulkAllRows");
 const bulkExportBtn = document.getElementById("bulkExport");
 const bulkStatus = document.getElementById("bulkStatus");
 
+function normalizeSheetId(input) {
+  const raw = (input || "").trim();
+  if (!raw) return "";
+  if (raw.includes("docs.google.com/spreadsheets")) {
+    const match = raw.match(/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+    if (match) return match[1];
+  }
+  const idParam = raw.match(/[?&]id=([a-zA-Z0-9-_]+)/);
+  if (idParam) return idParam[1];
+  return raw;
+}
+
+function extractErrorMessage(text) {
+  if (!text) return "";
+  try {
+    const data = JSON.parse(text);
+    if (data && typeof data.detail === "string") return data.detail;
+  } catch (error) {
+    // ignore parse failure
+  }
+  return text;
+}
+
 const FONT_OPTIONS = [
   "Playfair Display",
   "Merriweather",
@@ -338,7 +361,13 @@ function populateRowSelect() {
   rowSelect.innerHTML = "";
   state.rows.forEach((row, index) => {
     const option = document.createElement("option");
-    const title = row.title || row["title"] || row["Title"] || "Untitled";
+    const title =
+      row.title ||
+      row["title"] ||
+      row["Title"] ||
+      row["g:title"] ||
+      row["g:Title"] ||
+      "Untitled";
     option.value = index;
     const sheetRow = index + 2;
     option.textContent = `${sheetRow}. ${title}`;
@@ -354,14 +383,25 @@ function updateRowMeta() {
     rowMeta.textContent = "No row selected.";
     return;
   }
-  const id = row.id || row["id"] || row["old id"] || "";
+  const id =
+    row.id || row["id"] || row["g:id"] || row["meta id"] || row["old id"] || "";
   const price = row.price || row["price"] || "";
   const sheetRow = state.currentRowIndex + 2;
   rowMeta.textContent = `Sheet row: ${sheetRow} | ID: ${id || "n/a"} | Price: ${price || "n/a"}`;
 }
 
+function normalizeColumnLabel(label) {
+  return String(label || "")
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .trim();
+}
+
 function guessColumn(nameIncludes, fallback) {
-  const match = state.columns.find((col) => col.toLowerCase().includes(nameIncludes));
+  const needle = normalizeColumnLabel(nameIncludes);
+  const match = state.columns.find((col) =>
+    normalizeColumnLabel(col).includes(needle)
+  );
   return match || fallback || state.columns[0] || "";
 }
 
@@ -1622,10 +1662,14 @@ async function fetchConfig() {
 }
 
 async function connectSheet() {
-  const sheetId = sheetIdInput.value.trim();
+  const rawSheetId = sheetIdInput.value.trim();
+  const sheetId = normalizeSheetId(rawSheetId);
   if (!sheetId) {
     setSheetStatus("Sheet ID required.");
     return;
+  }
+  if (sheetId !== rawSheetId) {
+    sheetIdInput.value = sheetId;
   }
   setSheetStatus("Connecting...");
   try {
@@ -1634,7 +1678,8 @@ async function connectSheet() {
     );
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(text || "Unable to load sheet tabs");
+      const detail = extractErrorMessage(text);
+      throw new Error(detail || "Unable to load sheet tabs");
     }
     const data = await response.json();
     sheetTabSelect.innerHTML = "";
@@ -1644,7 +1689,8 @@ async function connectSheet() {
       option.textContent = tab;
       sheetTabSelect.appendChild(option);
     });
-    const defaultTab = state.sheetTab || data.tabs[0];
+    const defaultTab =
+      data.tabs.includes(state.sheetTab) ? state.sheetTab : data.tabs[0];
     if (defaultTab) sheetTabSelect.value = defaultTab;
     state.sheetId = sheetId;
     state.sheetTab = sheetTabSelect.value;
@@ -1652,7 +1698,8 @@ async function connectSheet() {
     await loadSheetRows();
   } catch (error) {
     console.error(error);
-    setSheetStatus("Connection failed. Check server.");
+    const message = error?.message ? `Connection failed: ${error.message}` : "Connection failed.";
+    setSheetStatus(message);
   }
 }
 

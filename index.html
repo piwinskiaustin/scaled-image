@@ -39,14 +39,15 @@
           </div>
 
           <div id="sheetsControls" hidden>
-            <div class="row">
-              <label for="sheetId">Sheet ID</label>
-              <input type="text" id="sheetId" placeholder="Google Sheet ID" />
-            </div>
-            <div class="row">
-              <label for="sheetTab">Sheet tab</label>
-              <select id="sheetTab"></select>
-            </div>
+          <div class="row">
+            <label for="sheetId">Sheet ID</label>
+            <input type="text" id="sheetId" placeholder="Google Sheet ID" />
+          </div>
+          <p class="hint">You can paste the full Google Sheets URL — we will extract the ID.</p>
+          <div class="row">
+            <label for="sheetTab">Sheet tab</label>
+            <select id="sheetTab"></select>
+          </div>
             <div class="row inline">
               <button id="connectSheet">Connect</button>
               <button class="ghost" id="refreshSheet">Reload rows</button>
@@ -163,6 +164,6 @@
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=20260201-3"></script>
   </body>
 </html>

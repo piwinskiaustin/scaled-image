@@ -1,5 +1,6 @@
 import base64
 import os
+import re
 import time
 from typing import List, Optional
 
@@ -65,7 +66,21 @@ def get_storage_client():
 
 def get_sheet_id(sheet_id: Optional[str]):
     env_sheet = os.environ.get("SHEET_ID")
-    return sheet_id or env_sheet
+    return normalize_sheet_id(sheet_id or env_sheet)
+
+
+def normalize_sheet_id(value: Optional[str]):
+    if not value:
+        return value
+    value = value.strip()
+    if "docs.google.com/spreadsheets" in value:
+        match = re.search(r"/spreadsheets/d/([a-zA-Z0-9-_]+)", value)
+        if match:
+            return match.group(1)
+        match = re.search(r"[?&]id=([a-zA-Z0-9-_]+)", value)
+        if match:
+            return match.group(1)
+    return value
 
 
 def column_to_a1(index: int) -> str:
