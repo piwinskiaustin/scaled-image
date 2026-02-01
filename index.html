@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Scaled Image Edit</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <aside class="panel">
+        <header class="panel-header">
+          <div>
+            <h1>Scaled Image Edit</h1>
+            <p class="subtitle">Template once, apply to every row</p>
+          </div>
+          <div class="status" id="csvStatus">No CSV loaded</div>
+        </header>
+
+        <section class="block">
+          <h2>Data Source</h2>
+          <div class="row inline">
+            <label class="checkbox">
+              <input type="radio" name="dataSource" value="csv" checked />
+              CSV
+            </label>
+            <label class="checkbox">
+              <input type="radio" name="dataSource" value="sheets" />
+              Google Sheets
+            </label>
+          </div>
+
+          <div id="csvControls">
+            <div class="row">
+              <label for="csvFile">CSV file</label>
+              <input type="file" id="csvFile" accept=".csv" />
+              <button class="ghost" id="loadDefaultCsv">Load default CSV</button>
+            </div>
+          </div>
+
+          <div id="sheetsControls" hidden>
+            <div class="row">
+              <label for="sheetId">Sheet ID</label>
+              <input type="text" id="sheetId" placeholder="Google Sheet ID" />
+            </div>
+            <div class="row">
+              <label for="sheetTab">Sheet tab</label>
+              <select id="sheetTab"></select>
+            </div>
+            <div class="row inline">
+              <button id="connectSheet">Connect</button>
+              <button class="ghost" id="refreshSheet">Reload rows</button>
+            </div>
+            <div class="meta" id="sheetStatus">Not connected.</div>
+          </div>
+
+          <div class="row">
+            <label for="rowSelect">Preview row</label>
+            <select id="rowSelect"></select>
+            <div class="meta" id="rowMeta">Load a CSV to see rows.</div>
+          </div>
+          <div class="row">
+            <label>Columns</label>
+            <div class="pill-list" id="columnList"></div>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Layout</h2>
+          <div class="row">
+            <label for="layoutSelect">Preset</label>
+            <select id="layoutSelect"></select>
+          </div>
+          <div class="row inline">
+            <label class="checkbox">
+              <input type="checkbox" id="toggleGuides" />
+              Show guides
+            </label>
+            <button class="ghost" id="resetPlacement">Reset image placement</button>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Layers</h2>
+          <div class="row inline">
+            <button id="addImage">Add image</button>
+            <button id="addText">Add text</button>
+            <button class="ghost" id="addShape">Add shape</button>
+          </div>
+          <div id="layersList" class="layers-list"></div>
+        </section>
+
+        <section class="block">
+          <h2>Inspector</h2>
+          <div id="inspector">
+            <p class="hint">Select a layer to edit its settings.</p>
+          </div>
+        </section>
+
+        <section class="block">
+          <h2>Sheet Output</h2>
+          <div class="row">
+            <label for="urlColumnSelect">Image URL column</label>
+            <select id="urlColumnSelect"></select>
+            <input type="text" id="urlColumnCustom" placeholder="New column name" hidden />
+          </div>
+          <div class="row">
+            <label>Bulk export range (sheet rows)</label>
+            <div class="row inline">
+              <div class="stack">
+                <label for="bulkStartRow">Start row</label>
+                <input type="number" id="bulkStartRow" min="2" value="2" />
+              </div>
+              <div class="stack">
+                <label for="bulkEndRow">End row</label>
+                <input type="number" id="bulkEndRow" min="2" value="2" />
+              </div>
+              <button class="ghost" id="bulkAllRows">All rows</button>
+            </div>
+            <div class="meta" id="bulkStatus"></div>
+          </div>
+          <div class="row inline">
+            <button id="exportSheet">Export selected row</button>
+            <button class="ghost" id="bulkExport">Bulk export</button>
+            <button class="ghost" id="copyTemplate">Copy template JSON</button>
+            <button class="ghost" id="saveTemplate">Save template</button>
+            <button class="ghost" id="loadTemplate">Load template</button>
+          </div>
+          <p class="hint">
+            Export uses the selected preview row and writes the GCS URL into the selected column.
+          </p>
+          <div class="row">
+            <label>Quick preview range (sheet rows)</label>
+            <div class="row inline">
+              <div class="stack">
+                <label for="previewStartRow">Start row</label>
+                <input type="number" id="previewStartRow" min="2" value="2" />
+              </div>
+              <div class="stack">
+                <label for="previewEndRow">End row</label>
+                <input type="number" id="previewEndRow" min="2" value="21" />
+              </div>
+              <button class="ghost" id="preview20">20</button>
+              <button class="ghost" id="preview50">50</button>
+            </div>
+            <div class="row inline">
+              <button class="ghost" id="generatePreview">Generate previews</button>
+              <button class="ghost" id="clearPreview">Clear</button>
+            </div>
+            <div class="meta" id="previewStatus"></div>
+          </div>
+        </section>
+      </aside>
+
+      <main class="preview">
+        <div class="canvas-wrap">
+          <canvas id="preview" width="1080" height="1080"></canvas>
+        </div>
+        <div id="previewGallery" class="preview-gallery"></div>
+        <div class="footer">
+          Drag layers on the canvas. Dragging an image moves its crop. Hold Shift to move the frame. Scroll on an image to zoom.
+        </div>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
