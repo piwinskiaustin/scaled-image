@@ -122,6 +122,18 @@ input[type="range"] {
   padding: 0;
 }
 
+.number-control {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  gap: 8px;
+  align-items: center;
+}
+
+.number-control input[type="number"] {
+  width: 90px;
+  padding-right: 6px;
+}
+
 button {
   border: none;
   padding: 10px 12px;

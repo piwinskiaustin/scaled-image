@@ -72,6 +72,20 @@
             <label for="layoutSelect">Preset</label>
             <select id="layoutSelect"></select>
           </div>
+          <div class="row">
+            <label for="layoutName">Layout name</label>
+            <input type="text" id="layoutName" placeholder="My layout" />
+          </div>
+          <div class="row">
+            <label for="savedLayoutSelect">Saved layouts</label>
+            <select id="savedLayoutSelect"></select>
+          </div>
+          <div class="row inline">
+            <button class="ghost" id="saveLayout">Save layout</button>
+            <button class="ghost" id="loadLayout">Load selected</button>
+            <button class="ghost" id="deleteLayout">Delete selected</button>
+          </div>
+          <div class="meta" id="layoutStatus"></div>
           <div class="row inline">
             <label class="checkbox">
               <input type="checkbox" id="toggleGuides" />
@@ -123,6 +137,7 @@
           <div class="row inline">
             <button id="exportSheet">Export selected row</button>
             <button class="ghost" id="bulkExport">Bulk export</button>
+            <button class="ghost" id="bulkCancel" disabled>Cancel bulk</button>
             <button class="ghost" id="copyTemplate">Copy template JSON</button>
             <button class="ghost" id="saveTemplate">Save template</button>
             <button class="ghost" id="loadTemplate">Load template</button>
@@ -164,6 +179,6 @@
       </main>
     </div>
 
-    <script src="app.js?v=20260201-3"></script>
+    <script src="app.js?v=20260203-3"></script>
   </body>
 </html>

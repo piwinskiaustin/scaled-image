@@ -1,4 +1,15 @@
-const API_BASE = "http://localhost:3001";
+const DEFAULT_API_PORT = 3001;
+
+function resolveApiBase() {
+  const params = new URLSearchParams(window.location.search);
+  const override = params.get("api");
+  if (override) return override;
+  const hostname = window.location.hostname;
+  if (!hostname) return `http://localhost:${DEFAULT_API_PORT}`;
+  return `${window.location.protocol}//${hostname}:${DEFAULT_API_PORT}`;
+}
+
+const API_BASE = resolveApiBase();
 const canvas = document.getElementById("preview");
 const ctx = canvas.getContext("2d");
 
@@ -9,6 +20,12 @@ const rowMeta = document.getElementById("rowMeta");
 const columnList = document.getElementById("columnList");
 const csvStatus = document.getElementById("csvStatus");
 const layoutSelect = document.getElementById("layoutSelect");
+const layoutNameInput = document.getElementById("layoutName");
+const savedLayoutSelect = document.getElementById("savedLayoutSelect");
+const saveLayoutBtn = document.getElementById("saveLayout");
+const loadLayoutBtn = document.getElementById("loadLayout");
+const deleteLayoutBtn = document.getElementById("deleteLayout");
+const layoutStatus = document.getElementById("layoutStatus");
 const toggleGuides = document.getElementById("toggleGuides");
 const resetPlacement = document.getElementById("resetPlacement");
 const addImageBtn = document.getElementById("addImage");
@@ -46,6 +63,7 @@ const bulkStartRowInput = document.getElementById("bulkStartRow");
 const bulkEndRowInput = document.getElementById("bulkEndRow");
 const bulkAllRowsBtn = document.getElementById("bulkAllRows");
 const bulkExportBtn = document.getElementById("bulkExport");
+const bulkCancelBtn = document.getElementById("bulkCancel");
 const bulkStatus = document.getElementById("bulkStatus");
 
 function normalizeSheetId(input) {
@@ -150,6 +168,7 @@ const state = {
   selectedLayerId: null,
   rowVersion: 0,
   showGuides: false,
+  showMaxWidthGuide: false,
   dragging: null,
   dataSource: "csv",
   sheetId: "",
@@ -172,6 +191,9 @@ function createImageLayer(name, x, y, w, h) {
     visible: true,
     column: "",
     fallbackColumn: "",
+    sourceType: "dynamic",
+    staticUrl: "",
+    staticName: "",
     zoom: 1,
     offsetX: 0,
     offsetY: 0,
@@ -222,7 +244,49 @@ function setStatus(message) {
   csvStatus.textContent = message;
 }
 
+const LAYOUTS_STORAGE_KEY = "scaled-image-edit-layouts";
+
+function setLayoutStatus(message) {
+  if (!layoutStatus) return;
+  layoutStatus.textContent = message || "";
+}
+
+function getSavedLayouts() {
+  const raw = localStorage.getItem(LAYOUTS_STORAGE_KEY);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch (error) {
+    return {};
+  }
+}
+
+function saveLayouts(layouts) {
+  localStorage.setItem(LAYOUTS_STORAGE_KEY, JSON.stringify(layouts));
+}
+
+function populateSavedLayouts(selectedName = "") {
+  if (!savedLayoutSelect) return;
+  const layouts = getSavedLayouts();
+  const names = Object.keys(layouts).sort((a, b) => a.localeCompare(b));
+  savedLayoutSelect.innerHTML = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = names.length ? "Select saved layout" : "No saved layouts";
+  savedLayoutSelect.appendChild(empty);
+  names.forEach((name) => {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    savedLayoutSelect.appendChild(option);
+  });
+  savedLayoutSelect.value = selectedName || "";
+}
+
 let autoSaveTimer = null;
+let bulkExportActive = false;
+let bulkCancelRequested = false;
 
 function scheduleAutoSave() {
   clearTimeout(autoSaveTimer);
@@ -415,8 +479,12 @@ function ensureDefaultColumns() {
     guessColumn("additional", guessColumn("image"));
 
   const imageLayers = state.layers.filter((layer) => layer.type === "image");
-  if (imageLayers[0] && !imageLayers[0].column) imageLayers[0].column = leftGuess;
-  if (imageLayers[1] && !imageLayers[1].column) imageLayers[1].column = rightGuess;
+  if (imageLayers[0] && imageLayers[0].sourceType !== "static" && !imageLayers[0].column) {
+    imageLayers[0].column = leftGuess;
+  }
+  if (imageLayers[1] && imageLayers[1].sourceType !== "static" && !imageLayers[1].column) {
+    imageLayers[1].column = rightGuess;
+  }
 
   renderInspector();
 }
@@ -458,21 +526,7 @@ function pickImageUrl(value) {
   return value.trim();
 }
 
-function loadImageForLayer(layer, rowIndex = state.currentRowIndex, version = state.rowVersion) {
-  const row = state.rows[rowIndex];
-  if (!row || !layer.column) {
-    layer.image = null;
-    layer.url = "";
-    render();
-    return Promise.resolve(false);
-  }
-
-  const primaryValue = row[layer.column] || "";
-  const primaryUrl = pickImageUrl(primaryValue);
-  const fallbackValue = layer.fallbackColumn ? row[layer.fallbackColumn] || "" : "";
-  const fallbackUrl = pickImageUrl(fallbackValue);
-
-  let url = primaryUrl || fallbackUrl;
+function loadLayerImageFromUrl(layer, url, rowIndex, version, fallbackUrl = "") {
   layer.url = url;
 
   if (!url) {
@@ -521,6 +575,29 @@ function loadImageForLayer(layer, rowIndex = state.currentRowIndex, version = st
 
     attemptLoad(url, false);
   });
+}
+
+function loadImageForLayer(layer, rowIndex = state.currentRowIndex, version = state.rowVersion) {
+  if (layer.sourceType === "static") {
+    const staticUrl = (layer.staticUrl || "").trim();
+    return loadLayerImageFromUrl(layer, staticUrl, rowIndex, version);
+  }
+
+  const row = state.rows[rowIndex];
+  if (!row || !layer.column) {
+    layer.image = null;
+    layer.url = "";
+    render();
+    return Promise.resolve(false);
+  }
+
+  const primaryValue = row[layer.column] || "";
+  const primaryUrl = pickImageUrl(primaryValue);
+  const fallbackValue = layer.fallbackColumn ? row[layer.fallbackColumn] || "" : "";
+  const fallbackUrl = pickImageUrl(fallbackValue);
+
+  const url = primaryUrl || fallbackUrl;
+  return loadLayerImageFromUrl(layer, url, rowIndex, version, fallbackUrl);
 }
 
 function clampImageOffset(layer) {
@@ -600,6 +677,23 @@ function getTextBounds(layer, row) {
   };
 }
 
+function getMaxWidthBounds(layer, row) {
+  const measurement = measureText(layer, row);
+  const width = layer.maxWidth > 0 ? layer.maxWidth : measurement.width;
+  let x = layer.x;
+  if (layer.align === "center") {
+    x -= width / 2;
+  } else if (layer.align === "right") {
+    x -= width;
+  }
+  return {
+    ...measurement,
+    x,
+    y: layer.y,
+    width,
+  };
+}
+
 function render() {
   ctx.imageSmoothingEnabled = true;
   ctx.imageSmoothingQuality = "high";
@@ -620,7 +714,7 @@ function render() {
     }
   });
 
-  if (state.showGuides) {
+  if (state.showGuides || state.showMaxWidthGuide) {
     drawGuides(row);
   }
   scheduleAutoSave();
@@ -695,7 +789,7 @@ function roundedRectPath(x, y, w, h, r) {
 function drawGuides(row) {
   state.layers.forEach((layer) => {
     if (!layer.visible) return;
-    if (layer.type === "image" || layer.type === "shape") {
+    if (state.showGuides && (layer.type === "image" || layer.type === "shape")) {
       ctx.strokeStyle = layer.id === state.selectedLayerId ? "rgba(208, 122, 74, 0.8)" : "rgba(208, 122, 74, 0.4)";
       ctx.lineWidth = layer.id === state.selectedLayerId ? 2 : 1;
       ctx.strokeRect(layer.x + 1, layer.y + 1, layer.w - 2, layer.h - 2);
@@ -703,11 +797,24 @@ function drawGuides(row) {
         drawHandles(layer);
       }
     }
-    if (layer.type === "text" && layer.id === state.selectedLayerId) {
+    if (
+      layer.type === "text" &&
+      layer.id === state.selectedLayerId &&
+      (state.showGuides || state.showMaxWidthGuide)
+    ) {
       const bounds = getTextBounds(layer, row);
       ctx.strokeStyle = "rgba(75, 50, 30, 0.5)";
       ctx.lineWidth = 1;
       ctx.strokeRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
+
+      if (layer.maxWidth > 0) {
+        const maxBounds = getMaxWidthBounds(layer, row);
+        ctx.save();
+        ctx.setLineDash([6, 4]);
+        ctx.strokeStyle = "rgba(208, 122, 74, 0.7)";
+        ctx.strokeRect(maxBounds.x, maxBounds.y, maxBounds.width, maxBounds.height);
+        ctx.restore();
+      }
     }
   });
 }
@@ -740,7 +847,7 @@ function hitTestLayer(x, y) {
     const layer = state.layers[i];
     if (!layer.visible) continue;
     if (layer.type === "text") {
-      const bounds = getTextBounds(layer, row);
+      const bounds = getMaxWidthBounds(layer, row);
       if (x >= bounds.x && x <= bounds.x + bounds.width && y >= bounds.y && y <= bounds.y + bounds.height) {
         return layer;
       }
@@ -760,6 +867,7 @@ function hitTestHandle(layer, x, y) {
 
 function selectLayer(id) {
   state.selectedLayerId = id;
+  state.showMaxWidthGuide = false;
   renderLayersList();
   renderInspector();
   render();
@@ -866,38 +974,143 @@ function renderInspector() {
   inspector.appendChild(nameRow);
 
   if (layer.type === "image") {
-    inspector.appendChild(makeSelectRow("Column", layer, "column", state.columns, (value) => {
-      layer.column = value;
-      loadImageForLayer(layer);
-    }));
+    inspector.appendChild(
+      makeSelectRow(
+        "Source",
+        layer,
+        "sourceType",
+        [
+          { value: "dynamic", label: "Dynamic (column)" },
+          { value: "static", label: "Static (upload/url)" },
+        ],
+        (value) => {
+          layer.sourceType = value;
+          loadImageForLayer(layer);
+          renderInspector();
+          render();
+        }
+      )
+    );
 
-    inspector.appendChild(makeSelectRowWithNone("Backup column", layer, "fallbackColumn", state.columns, (value) => {
-      layer.fallbackColumn = value;
-      loadImageForLayer(layer);
-    }));
+    if (layer.sourceType !== "static") {
+      inspector.appendChild(makeSelectRow("Column", layer, "column", state.columns, (value) => {
+        layer.column = value;
+        loadImageForLayer(layer);
+      }));
 
-    inspector.appendChild(makeRangeRow("Zoom", layer, "zoom", 0.3, 4, 0.01, (value) => {
-      layer.zoom = value;
-      clampImageOffset(layer);
-      render();
-    }));
+      inspector.appendChild(makeSelectRowWithNone("Backup column", layer, "fallbackColumn", state.columns, (value) => {
+        layer.fallbackColumn = value;
+        loadImageForLayer(layer);
+      }));
+    } else {
+      const fileRow = document.createElement("div");
+      fileRow.className = "row";
+      const fileLabel = document.createElement("label");
+      fileLabel.textContent = "Upload image";
+      const fileInput = document.createElement("input");
+      fileInput.type = "file";
+      fileInput.accept = "image/*";
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          layer.staticUrl = reader.result;
+          layer.staticName = file.name;
+          loadImageForLayer(layer);
+          renderInspector();
+          render();
+        };
+        reader.readAsDataURL(file);
+      });
+      fileRow.appendChild(fileLabel);
+      fileRow.appendChild(fileInput);
+      inspector.appendChild(fileRow);
 
-    inspector.appendChild(makeInputRow("X", layer, "x", "number", (value) => {
-      layer.x = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Y", layer, "y", "number", (value) => {
-      layer.y = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("W", layer, "w", "number", (value) => {
-      layer.w = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("H", layer, "h", "number", (value) => {
-      layer.h = value;
-      render();
-    }));
+      inspector.appendChild(makeInputRow("Image URL", layer, "staticUrl", "text", (value) => {
+        layer.staticUrl = value.trim();
+        loadImageForLayer(layer);
+        render();
+      }));
+
+      const staticMeta = document.createElement("div");
+      staticMeta.className = "meta";
+      staticMeta.textContent = layer.staticName ? `Selected: ${layer.staticName}` : "No static image selected.";
+      inspector.appendChild(staticMeta);
+
+      const clearRow = document.createElement("div");
+      clearRow.className = "row inline";
+      const clearBtn = document.createElement("button");
+      clearBtn.className = "ghost";
+      clearBtn.textContent = "Clear static image";
+      clearBtn.addEventListener("click", () => {
+        layer.staticUrl = "";
+        layer.staticName = "";
+        loadImageForLayer(layer);
+        renderInspector();
+        render();
+      });
+      clearRow.appendChild(clearBtn);
+      inspector.appendChild(clearRow);
+    }
+
+    inspector.appendChild(
+      makeNumberRow("Zoom", layer, "zoom", {
+        min: 0.3,
+        max: 4,
+        step: 0.01,
+        onChange: (value) => {
+          layer.zoom = value;
+          clampImageOffset(layer);
+          render();
+        },
+      })
+    );
+
+    inspector.appendChild(
+      makeNumberRow("X", layer, "x", {
+        min: -500,
+        max: 1500,
+        step: 1,
+        onChange: (value) => {
+          layer.x = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Y", layer, "y", {
+        min: -500,
+        max: 1500,
+        step: 1,
+        onChange: (value) => {
+          layer.y = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("W", layer, "w", {
+        min: 20,
+        max: 2000,
+        step: 1,
+        onChange: (value) => {
+          layer.w = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("H", layer, "h", {
+        min: 20,
+        max: 2000,
+        step: 1,
+        onChange: (value) => {
+          layer.h = value;
+          render();
+        },
+      })
+    );
 
     const actions = document.createElement("div");
     actions.className = "row inline";
@@ -938,14 +1151,28 @@ function renderInspector() {
       layer.fontFamily = value;
       render();
     }));
-    inspector.appendChild(makeInputRow("Size", layer, "fontSize", "number", (value) => {
-      layer.fontSize = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Weight", layer, "fontWeight", "number", (value) => {
-      layer.fontWeight = value;
-      render();
-    }));
+    inspector.appendChild(
+      makeNumberRow("Size", layer, "fontSize", {
+        min: 8,
+        max: 200,
+        step: 1,
+        onChange: (value) => {
+          layer.fontSize = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Weight", layer, "fontWeight", {
+        min: 100,
+        max: 900,
+        step: 10,
+        onChange: (value) => {
+          layer.fontWeight = value;
+          render();
+        },
+      })
+    );
     inspector.appendChild(makeSelectRow("Align", layer, "align", ["left", "center", "right"], (value) => {
       layer.align = value;
       render();
@@ -954,22 +1181,54 @@ function renderInspector() {
       layer.color = value;
       render();
     }));
-    inspector.appendChild(makeInputRow("X", layer, "x", "number", (value) => {
-      layer.x = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Y", layer, "y", "number", (value) => {
-      layer.y = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Max width", layer, "maxWidth", "number", (value) => {
-      layer.maxWidth = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Line height", layer, "lineHeight", "number", (value) => {
-      layer.lineHeight = value;
-      render();
-    }, 0.1));
+    inspector.appendChild(
+      makeNumberRow("X", layer, "x", {
+        min: -500,
+        max: 1500,
+        step: 1,
+        onChange: (value) => {
+          layer.x = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Y", layer, "y", {
+        min: -500,
+        max: 1500,
+        step: 1,
+        onChange: (value) => {
+          layer.y = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Max width", layer, "maxWidth", {
+        min: 0,
+        max: 1600,
+        step: 1,
+        onChange: (value) => {
+          layer.maxWidth = value;
+          render();
+        },
+        onGuideChange: (active) => {
+          state.showMaxWidthGuide = active;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Line height", layer, "lineHeight", {
+        min: 0.6,
+        max: 3,
+        step: 0.05,
+        onChange: (value) => {
+          layer.lineHeight = value;
+          render();
+        },
+      })
+    );
 
     const insertRow = document.createElement("div");
     insertRow.className = "row inline";
@@ -994,22 +1253,50 @@ function renderInspector() {
   }
 
   if (layer.type === "shape") {
-    inspector.appendChild(makeInputRow("X", layer, "x", "number", (value) => {
-      layer.x = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Y", layer, "y", "number", (value) => {
-      layer.y = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("W", layer, "w", "number", (value) => {
-      layer.w = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("H", layer, "h", "number", (value) => {
-      layer.h = value;
-      render();
-    }));
+    inspector.appendChild(
+      makeNumberRow("X", layer, "x", {
+        min: -500,
+        max: 1500,
+        step: 1,
+        onChange: (value) => {
+          layer.x = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Y", layer, "y", {
+        min: -500,
+        max: 1500,
+        step: 1,
+        onChange: (value) => {
+          layer.y = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("W", layer, "w", {
+        min: 20,
+        max: 2000,
+        step: 1,
+        onChange: (value) => {
+          layer.w = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("H", layer, "h", {
+        min: 20,
+        max: 2000,
+        step: 1,
+        onChange: (value) => {
+          layer.h = value;
+          render();
+        },
+      })
+    );
     inspector.appendChild(makeInputRow("Fill", layer, "fill", "color", (value) => {
       layer.fill = value;
       render();
@@ -1018,14 +1305,28 @@ function renderInspector() {
       layer.stroke = value;
       render();
     }));
-    inspector.appendChild(makeInputRow("Stroke width", layer, "strokeWidth", "number", (value) => {
-      layer.strokeWidth = value;
-      render();
-    }));
-    inspector.appendChild(makeInputRow("Corner radius", layer, "radius", "number", (value) => {
-      layer.radius = value;
-      render();
-    }));
+    inspector.appendChild(
+      makeNumberRow("Stroke width", layer, "strokeWidth", {
+        min: 0,
+        max: 40,
+        step: 1,
+        onChange: (value) => {
+          layer.strokeWidth = value;
+          render();
+        },
+      })
+    );
+    inspector.appendChild(
+      makeNumberRow("Corner radius", layer, "radius", {
+        min: 0,
+        max: 200,
+        step: 1,
+        onChange: (value) => {
+          layer.radius = value;
+          render();
+        },
+      })
+    );
   }
 }
 
@@ -1048,6 +1349,63 @@ function makeInputRow(labelText, layer, field, type, onChange, step = null) {
   return wrapper;
 }
 
+function makeNumberRow(
+  labelText,
+  layer,
+  field,
+  { min = 0, max = 1000, step = 1, onChange, onGuideChange } = {}
+) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "row";
+  const label = document.createElement("label");
+  label.textContent = labelText;
+  const control = document.createElement("div");
+  control.className = "number-control";
+
+  const numberInput = document.createElement("input");
+  numberInput.type = "number";
+  numberInput.min = min;
+  numberInput.max = max;
+  numberInput.step = step;
+  numberInput.value = layer[field] ?? 0;
+
+  const rangeInput = document.createElement("input");
+  rangeInput.type = "range";
+  rangeInput.min = min;
+  rangeInput.max = max;
+  rangeInput.step = step;
+  rangeInput.value = layer[field] ?? 0;
+
+  const setValue = (raw) => {
+    const num = Number(raw);
+    if (Number.isNaN(num)) return;
+    layer[field] = num;
+    numberInput.value = num;
+    rangeInput.value = num;
+    onChange?.(num);
+  };
+
+  numberInput.addEventListener("input", () => setValue(numberInput.value));
+  rangeInput.addEventListener("input", () => setValue(rangeInput.value));
+
+  if (onGuideChange) {
+    const enableGuide = () => onGuideChange(true);
+    const disableGuide = () => onGuideChange(false);
+    numberInput.addEventListener("focus", enableGuide);
+    numberInput.addEventListener("blur", disableGuide);
+    rangeInput.addEventListener("focus", enableGuide);
+    rangeInput.addEventListener("blur", disableGuide);
+    rangeInput.addEventListener("pointerdown", enableGuide);
+    rangeInput.addEventListener("pointerup", disableGuide);
+  }
+
+  control.appendChild(numberInput);
+  control.appendChild(rangeInput);
+  wrapper.appendChild(label);
+  wrapper.appendChild(control);
+  return wrapper;
+}
+
 function makeSelectRowWithNone(labelText, layer, field, options, onChange) {
   const wrapper = document.createElement("div");
   wrapper.className = "row";
@@ -1060,8 +1418,13 @@ function makeSelectRowWithNone(labelText, layer, field, options, onChange) {
   select.appendChild(noneOption);
   options.forEach((opt) => {
     const option = document.createElement("option");
-    option.value = opt;
-    option.textContent = opt;
+    if (typeof opt === "string") {
+      option.value = opt;
+      option.textContent = opt;
+    } else {
+      option.value = opt.value;
+      option.textContent = opt.label;
+    }
     select.appendChild(option);
   });
   select.value = layer[field] ?? "";
@@ -1082,8 +1445,13 @@ function makeSelectRow(labelText, layer, field, options, onChange) {
   const select = document.createElement("select");
   options.forEach((opt) => {
     const option = document.createElement("option");
-    option.value = opt;
-    option.textContent = opt;
+    if (typeof opt === "string") {
+      option.value = opt;
+      option.textContent = opt;
+    } else {
+      option.value = opt.value;
+      option.textContent = opt.label;
+    }
     select.appendChild(option);
   });
   select.value = layer[field] ?? "";
@@ -1354,8 +1722,18 @@ if (bulkAllRowsBtn) {
   });
 }
 
+if (bulkCancelBtn) {
+  bulkCancelBtn.addEventListener("click", () => {
+    if (!bulkExportActive) return;
+    bulkCancelRequested = true;
+    bulkCancelBtn.disabled = true;
+    setBulkStatus("Canceling after current row...");
+  });
+}
+
 if (bulkExportBtn) {
   bulkExportBtn.addEventListener("click", async () => {
+    if (bulkExportActive) return;
     if (state.dataSource !== "sheets") {
       alert("Switch to Google Sheets to export to the sheet.");
       return;
@@ -1374,10 +1752,14 @@ if (bulkExportBtn) {
     const total = endSheet - startSheet + 1;
     let completed = 0;
     setBulkStatus(`Exporting ${total} rows...`);
+    bulkExportActive = true;
+    bulkCancelRequested = false;
     exportSheetBtn.disabled = true;
     bulkExportBtn.disabled = true;
+    if (bulkCancelBtn) bulkCancelBtn.disabled = false;
     try {
       for (let sheetRow = startSheet; sheetRow <= endSheet; sheetRow += 1) {
+        if (bulkCancelRequested) break;
         const rowIndex = sheetRow - 2;
         setBulkStatus(`Exporting sheet row ${sheetRow} (${sheetRow - startSheet + 1}/${total})`);
         await ensureRowReady(rowIndex);
@@ -1385,15 +1767,23 @@ if (bulkExportBtn) {
         await uploadRowToSheet(rowIndex, urlColumn, dataUrl);
         completed += 1;
       }
-      setBulkStatus(`Exported ${completed} rows.`);
-      showToast(`Bulk export complete (${completed})`, "success");
+      if (bulkCancelRequested) {
+        setBulkStatus(`Bulk export canceled after ${completed} rows.`);
+        showToast(`Bulk export canceled (${completed})`, "error");
+      } else {
+        setBulkStatus(`Exported ${completed} rows.`);
+        showToast(`Bulk export complete (${completed})`, "success");
+      }
     } catch (error) {
       console.error(error);
       setBulkStatus(`Bulk export failed after ${completed} rows.`);
       showToast("Bulk export failed", "error");
     } finally {
+      bulkExportActive = false;
+      bulkCancelRequested = false;
       exportSheetBtn.disabled = false;
       bulkExportBtn.disabled = false;
+      if (bulkCancelBtn) bulkCancelBtn.disabled = true;
     }
   });
 }
@@ -1454,6 +1844,64 @@ loadTemplateBtn.addEventListener("click", () => {
   }
 });
 
+if (savedLayoutSelect) {
+  savedLayoutSelect.addEventListener("change", () => {
+    if (layoutNameInput) layoutNameInput.value = savedLayoutSelect.value;
+  });
+}
+
+if (saveLayoutBtn) {
+  saveLayoutBtn.addEventListener("click", () => {
+    const name = (layoutNameInput?.value || savedLayoutSelect?.value || "").trim();
+    if (!name) {
+      setLayoutStatus("Enter a layout name to save.");
+      return;
+    }
+    const layouts = getSavedLayouts();
+    layouts[name] = serializeTemplate();
+    saveLayouts(layouts);
+    populateSavedLayouts(name);
+    setLayoutStatus(`Saved layout "${name}".`);
+  });
+}
+
+if (loadLayoutBtn) {
+  loadLayoutBtn.addEventListener("click", () => {
+    const name = (savedLayoutSelect?.value || "").trim();
+    if (!name) {
+      setLayoutStatus("Select a layout to load.");
+      return;
+    }
+    const layouts = getSavedLayouts();
+    const layout = layouts[name];
+    if (!layout) {
+      setLayoutStatus("Layout not found.");
+      return;
+    }
+    applyTemplate(layout);
+    setLayoutStatus(`Loaded layout "${name}".`);
+  });
+}
+
+if (deleteLayoutBtn) {
+  deleteLayoutBtn.addEventListener("click", () => {
+    const name = (savedLayoutSelect?.value || "").trim();
+    if (!name) {
+      setLayoutStatus("Select a layout to delete.");
+      return;
+    }
+    const layouts = getSavedLayouts();
+    if (!layouts[name]) {
+      setLayoutStatus("Layout not found.");
+      return;
+    }
+    delete layouts[name];
+    saveLayouts(layouts);
+    populateSavedLayouts();
+    setLayoutStatus(`Deleted layout "${name}".`);
+  });
+}
+
 
 function serializeTemplate() {
   return {
@@ -1469,6 +1917,9 @@ function applyTemplate(template) {
   if (!template || !Array.isArray(template.layers)) return;
   state.layers = template.layers.map((layer) => ({
     ...layer,
+    sourceType: layer.sourceType || "dynamic",
+    staticUrl: layer.staticUrl || "",
+    staticName: layer.staticName || "",
     image: null,
   }));
   state.selectedLayerId = state.layers[0]?.id || null;
@@ -1711,7 +2162,7 @@ async function loadSheetRows() {
   setSheetStatus("Loading rows...");
   try {
     const response = await fetch(
-      `http://localhost:3001/api/rows?sheet_id=${encodeURIComponent(
+      `${API_BASE}/api/rows?sheet_id=${encodeURIComponent(
         state.sheetId
       )}&tab=${encodeURIComponent(tab)}&limit=500&header_row=${headerRow}`
     );
@@ -1744,6 +2195,7 @@ sheetTabSelect.addEventListener("change", () => {
 
 function boot() {
   initLayoutSelect();
+  populateSavedLayouts();
   const savedTemplate = localStorage.getItem("scaled-image-edit-template");
   if (savedTemplate) {
     try {
