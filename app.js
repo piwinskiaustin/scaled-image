@@ -4,9 +4,7 @@ function resolveApiBase() {
   const params = new URLSearchParams(window.location.search);
   const override = params.get("api");
   if (override) return override;
-  const hostname = window.location.hostname;
-  if (!hostname) return `http://localhost:${DEFAULT_API_PORT}`;
-  return `${window.location.protocol}//${hostname}:${DEFAULT_API_PORT}`;
+  return window.location.origin || `http://localhost:${DEFAULT_API_PORT}`;
 }
 
 const API_BASE = resolveApiBase();
@@ -152,6 +150,186 @@ const PRESETS = {
       createImageLayer("Right Image", 540, 0, 540, 1080),
     ],
   },
+  fourSquares: {
+    label: "Four Squares (2x2)",
+    build: () => [
+      createImageLayer("Top Left Image", 0, 0, 540, 540),
+      createImageLayer("Top Right Image", 540, 0, 540, 540),
+      createImageLayer("Bottom Left Image", 0, 540, 540, 540),
+      createImageLayer("Bottom Right Image", 540, 540, 540, 540),
+    ],
+  },
+  offerGridSingleCore: {
+    label: "Offer Grid (Single Core URL)",
+    build: () => [
+      createShapeLayer("Background", 0, 0, 1080, 1080, {
+        fill: "#07122a",
+        stroke: "#07122a",
+        strokeWidth: 0,
+        radius: 0,
+      }),
+      createShapeLayer("Top Left Panel", 24, 24, 504, 504, {
+        fill: "#f7f8fb",
+        stroke: "#07122a",
+        strokeWidth: 16,
+        radius: 0,
+      }),
+      createShapeLayer("Top Right Panel", 552, 24, 504, 504, {
+        fill: "#f7f8fb",
+        stroke: "#07122a",
+        strokeWidth: 16,
+        radius: 0,
+      }),
+      createShapeLayer("Bottom Left Panel", 24, 552, 504, 504, {
+        fill: "#f7f8fb",
+        stroke: "#07122a",
+        strokeWidth: 16,
+        radius: 0,
+      }),
+      createShapeLayer("Bottom Right Panel", 552, 552, 504, 504, {
+        fill: "#f7f8fb",
+        stroke: "#07122a",
+        strokeWidth: 16,
+        radius: 0,
+      }),
+      createImageLayer("Lifestyle/Core Image", 44, 44, 464, 464, {
+        preferredNeedles: [
+          "additional image link",
+          "old additional image link",
+          "secondary image",
+          "image link",
+        ],
+        allowSharedColumn: true,
+      }),
+      createImageLayer("Core Product Image", 572, 572, 464, 464, {
+        preferredNeedles: ["image link", "main image", "primary image", "image"],
+        allowSharedColumn: true,
+      }),
+      createTextLayer("ONLY", 804, 180, 360, {
+        fontFamily: "Montserrat",
+        fontSize: 54,
+        fontWeight: 500,
+        color: "#07122a",
+        align: "center",
+      }),
+      createTextLayer("{price}", 804, 258, 360, {
+        fontFamily: "Oswald",
+        fontSize: 112,
+        fontWeight: 700,
+        color: "#07122a",
+        align: "center",
+      }),
+      createShapeLayer("Price Divider", 700, 432, 208, 8, {
+        fill: "#07122a",
+        stroke: "#07122a",
+        strokeWidth: 0,
+        radius: 0,
+      }),
+      createTextLayer("PERFECT FIT", 276, 708, 360, {
+        fontFamily: "Montserrat",
+        fontSize: 62,
+        fontWeight: 700,
+        color: "#07122a",
+        align: "center",
+      }),
+      createTextLayer("GUARANTEED", 276, 784, 360, {
+        fontFamily: "Montserrat",
+        fontSize: 62,
+        fontWeight: 700,
+        color: "#07122a",
+        align: "center",
+      }),
+      createShapeLayer("Brand Badge", 488, 488, 104, 104, {
+        fill: "#07122a",
+        stroke: "#07122a",
+        strokeWidth: 0,
+        radius: 0,
+      }),
+      createTextLayer("EBY", 540, 520, 100, {
+        fontFamily: "Bebas Neue",
+        fontSize: 50,
+        fontWeight: 600,
+        color: "#f7f8fb",
+        align: "center",
+      }),
+    ],
+  },
+  offerStackSingleCore: {
+    label: "Offer Stack (Single Core URL)",
+    build: () => [
+      createShapeLayer("Background", 0, 0, 1080, 1080, {
+        fill: "#111827",
+        stroke: "#111827",
+        strokeWidth: 0,
+        radius: 0,
+      }),
+      createShapeLayer("Left Image Panel", 28, 28, 660, 1024, {
+        fill: "#f9fafc",
+        stroke: "#111827",
+        strokeWidth: 18,
+        radius: 0,
+      }),
+      createShapeLayer("Top Offer Panel", 716, 28, 336, 492, {
+        fill: "#f9fafc",
+        stroke: "#111827",
+        strokeWidth: 18,
+        radius: 0,
+      }),
+      createShapeLayer("Bottom Product Panel", 716, 560, 336, 492, {
+        fill: "#f9fafc",
+        stroke: "#111827",
+        strokeWidth: 18,
+        radius: 0,
+      }),
+      createImageLayer("Hero/Core Image", 50, 50, 616, 980, {
+        preferredNeedles: [
+          "additional image link",
+          "old additional image link",
+          "secondary image",
+          "image link",
+        ],
+        allowSharedColumn: true,
+      }),
+      createImageLayer("Product/Core Image", 736, 580, 296, 452, {
+        preferredNeedles: ["image link", "main image", "primary image", "image"],
+        allowSharedColumn: true,
+      }),
+      createTextLayer("ONLY", 884, 150, 280, {
+        fontFamily: "Montserrat",
+        fontSize: 44,
+        fontWeight: 500,
+        color: "#111827",
+        align: "center",
+      }),
+      createTextLayer("{price}", 884, 218, 280, {
+        fontFamily: "Oswald",
+        fontSize: 96,
+        fontWeight: 700,
+        color: "#111827",
+        align: "center",
+      }),
+      createShapeLayer("Price Divider", 788, 360, 192, 7, {
+        fill: "#111827",
+        stroke: "#111827",
+        strokeWidth: 0,
+        radius: 0,
+      }),
+      createTextLayer("PERFECT FIT", 884, 406, 260, {
+        fontFamily: "Montserrat",
+        fontSize: 34,
+        fontWeight: 700,
+        color: "#111827",
+        align: "center",
+      }),
+      createTextLayer("GUARANTEED", 884, 450, 260, {
+        fontFamily: "Montserrat",
+        fontSize: 34,
+        fontWeight: 700,
+        color: "#111827",
+        align: "center",
+      }),
+    ],
+  },
   blank: {
     label: "Blank Canvas",
     build: () => [createImageLayer("Image", 120, 120, 420, 420)],
@@ -179,7 +357,7 @@ function createId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
-function createImageLayer(name, x, y, w, h) {
+function createImageLayer(name, x, y, w, h, overrides = {}) {
   return {
     id: createId("img"),
     type: "image",
@@ -199,6 +377,9 @@ function createImageLayer(name, x, y, w, h) {
     offsetY: 0,
     image: null,
     url: "",
+    preferredNeedles: [],
+    allowSharedColumn: false,
+    ...overrides,
   };
 }
 
@@ -223,7 +404,7 @@ function createTextLayer(template, x, y, maxWidth, overrides = {}) {
   };
 }
 
-function createShapeLayer(name, x, y, w, h) {
+function createShapeLayer(name, x, y, w, h, overrides = {}) {
   return {
     id: createId("shape"),
     type: "shape",
@@ -237,6 +418,7 @@ function createShapeLayer(name, x, y, w, h) {
     stroke: "#9b8a7b",
     strokeWidth: 2,
     radius: 16,
+    ...overrides,
   };
 }
 
@@ -245,6 +427,7 @@ function setStatus(message) {
 }
 
 const LAYOUTS_STORAGE_KEY = "scaled-image-edit-layouts";
+const LAYOUTS_API_PATH = "/api/layouts";
 
 function setLayoutStatus(message) {
   if (!layoutStatus) return;
@@ -266,10 +449,71 @@ function saveLayouts(layouts) {
   localStorage.setItem(LAYOUTS_STORAGE_KEY, JSON.stringify(layouts));
 }
 
-function populateSavedLayouts(selectedName = "") {
+async function fetchLayoutsIndex() {
+  try {
+    const response = await fetch(LAYOUTS_API_PATH, { cache: "no-store" });
+    if (!response.ok) throw new Error("Layout fetch failed");
+    const data = await response.json();
+    if (!Array.isArray(data.layouts)) throw new Error("Invalid layout response");
+    return data.layouts.map((item) => item.name).filter(Boolean);
+  } catch (error) {
+    const fallback = getSavedLayouts();
+    return Object.keys(fallback);
+  }
+}
+
+async function fetchLayoutByName(name) {
+  try {
+    const response = await fetch(`${LAYOUTS_API_PATH}?name=${encodeURIComponent(name)}`, {
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error("Layout fetch failed");
+    const data = await response.json();
+    if (!data || !data.template) throw new Error("Layout missing");
+    return data.template;
+  } catch (error) {
+    const fallback = getSavedLayouts();
+    return fallback[name];
+  }
+}
+
+async function saveLayoutByName(name, template) {
+  try {
+    const response = await fetch(LAYOUTS_API_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, template }),
+    });
+    if (!response.ok) throw new Error("Layout save failed");
+    return true;
+  } catch (error) {
+    const fallback = getSavedLayouts();
+    fallback[name] = template;
+    saveLayouts(fallback);
+    return false;
+  }
+}
+
+async function deleteLayoutByName(name) {
+  try {
+    const response = await fetch(`${LAYOUTS_API_PATH}?name=${encodeURIComponent(name)}`, {
+      method: "DELETE",
+    });
+    if (!response.ok) throw new Error("Layout delete failed");
+    return true;
+  } catch (error) {
+    const fallback = getSavedLayouts();
+    if (fallback[name]) {
+      delete fallback[name];
+      saveLayouts(fallback);
+    }
+    return false;
+  }
+}
+
+async function populateSavedLayouts(selectedName = "") {
   if (!savedLayoutSelect) return;
-  const layouts = getSavedLayouts();
-  const names = Object.keys(layouts).sort((a, b) => a.localeCompare(b));
+  const names = (await fetchLayoutsIndex()).sort((a, b) => a.localeCompare(b));
   savedLayoutSelect.innerHTML = "";
   const empty = document.createElement("option");
   empty.value = "";
@@ -462,28 +706,64 @@ function normalizeColumnLabel(label) {
 }
 
 function guessColumn(nameIncludes, fallback) {
-  const needle = normalizeColumnLabel(nameIncludes);
-  const match = state.columns.find((col) =>
-    normalizeColumnLabel(col).includes(needle)
-  );
-  return match || fallback || state.columns[0] || "";
+  const needles = Array.isArray(nameIncludes) ? nameIncludes : [nameIncludes];
+  for (const needleCandidate of needles) {
+    const needle = normalizeColumnLabel(needleCandidate);
+    if (!needle) continue;
+    const match = state.columns.find((col) =>
+      normalizeColumnLabel(col).includes(needle)
+    );
+    if (match) return match;
+  }
+  return fallback || state.columns[0] || "";
 }
 
 function ensureDefaultColumns() {
-  const leftGuess =
-    state.columns.find((col) => col.toLowerCase() === "image link") ||
-    guessColumn("image link", guessColumn("image"));
-  const rightGuess =
-    state.columns.find((col) => col.toLowerCase() === "additional image link") ||
-    state.columns.find((col) => col.toLowerCase() === "old additional image link") ||
-    guessColumn("additional", guessColumn("image"));
-
   const imageLayers = state.layers.filter((layer) => layer.type === "image");
-  if (imageLayers[0] && imageLayers[0].sourceType !== "static" && !imageLayers[0].column) {
-    imageLayers[0].column = leftGuess;
-  }
-  if (imageLayers[1] && imageLayers[1].sourceType !== "static" && !imageLayers[1].column) {
-    imageLayers[1].column = rightGuess;
+  const preferredColumns = [];
+  const priorityNeedles = [
+    "image link",
+    "additional image link",
+    "old additional image link",
+    "secondary image",
+    "third image",
+    "fourth image",
+  ];
+
+  priorityNeedles.forEach((needle) => {
+    const found = guessColumn(needle);
+    if (found && !preferredColumns.includes(found)) preferredColumns.push(found);
+  });
+
+  state.columns.forEach((col) => {
+    if (normalizeColumnLabel(col).includes("image") && !preferredColumns.includes(col)) {
+      preferredColumns.push(col);
+    }
+  });
+
+  imageLayers.forEach((layer, index) => {
+    if (layer.sourceType === "static" || layer.column) return;
+    const fallback = state.columns[0] || "";
+    const indexedDefault = preferredColumns[index] || preferredColumns[0] || fallback;
+    const roleNeedles = Array.isArray(layer.preferredNeedles) ? layer.preferredNeedles : [];
+    layer.column = guessColumn(roleNeedles, indexedDefault);
+  });
+
+  if (imageLayers.length > 1) {
+    const used = new Set();
+    imageLayers.forEach((layer) => {
+      if (layer.allowSharedColumn) return;
+      if (!layer.column) return;
+      if (!used.has(layer.column)) {
+        used.add(layer.column);
+        return;
+      }
+      const next = preferredColumns.find((col) => !used.has(col));
+      if (next) {
+        layer.column = next;
+        used.add(next);
+      }
+    });
   }
 
   renderInspector();
@@ -842,6 +1122,18 @@ function getHandlePoints(layer) {
 }
 
 function hitTestLayer(x, y) {
+  const selectedLayer = getSelectedLayer();
+  if (
+    selectedLayer &&
+    selectedLayer.visible &&
+    x >= selectedLayer.x &&
+    x <= selectedLayer.x + (selectedLayer.w || 0) &&
+    y >= selectedLayer.y &&
+    y <= selectedLayer.y + (selectedLayer.h || 0)
+  ) {
+    return selectedLayer;
+  }
+
   const row = state.rows[state.currentRowIndex] || {};
   for (let i = state.layers.length - 1; i >= 0; i -= 1) {
     const layer = state.layers[i];
@@ -1547,9 +1839,9 @@ canvas.addEventListener("pointerdown", (event) => {
   if (hitLayer) {
     selectLayer(hitLayer.id);
     if (hitLayer.type === "image") {
-      const moveFrame = event.shiftKey;
+      const moveCrop = event.shiftKey;
       state.dragging = {
-        type: moveFrame ? "move-frame" : "move-image",
+        type: moveCrop ? "move-image" : "move-frame",
         layerId: hitLayer.id,
         startX: x,
         startY: y,
@@ -1851,29 +2143,26 @@ if (savedLayoutSelect) {
 }
 
 if (saveLayoutBtn) {
-  saveLayoutBtn.addEventListener("click", () => {
+  saveLayoutBtn.addEventListener("click", async () => {
     const name = (layoutNameInput?.value || savedLayoutSelect?.value || "").trim();
     if (!name) {
       setLayoutStatus("Enter a layout name to save.");
       return;
     }
-    const layouts = getSavedLayouts();
-    layouts[name] = serializeTemplate();
-    saveLayouts(layouts);
-    populateSavedLayouts(name);
-    setLayoutStatus(`Saved layout "${name}".`);
+    const saved = await saveLayoutByName(name, serializeTemplate());
+    await populateSavedLayouts(name);
+    setLayoutStatus(saved ? `Saved layout "${name}".` : `Saved layout "${name}" (local fallback).`);
   });
 }
 
 if (loadLayoutBtn) {
-  loadLayoutBtn.addEventListener("click", () => {
+  loadLayoutBtn.addEventListener("click", async () => {
     const name = (savedLayoutSelect?.value || "").trim();
     if (!name) {
       setLayoutStatus("Select a layout to load.");
       return;
     }
-    const layouts = getSavedLayouts();
-    const layout = layouts[name];
+    const layout = await fetchLayoutByName(name);
     if (!layout) {
       setLayoutStatus("Layout not found.");
       return;
@@ -1884,21 +2173,15 @@ if (loadLayoutBtn) {
 }
 
 if (deleteLayoutBtn) {
-  deleteLayoutBtn.addEventListener("click", () => {
+  deleteLayoutBtn.addEventListener("click", async () => {
     const name = (savedLayoutSelect?.value || "").trim();
     if (!name) {
       setLayoutStatus("Select a layout to delete.");
       return;
     }
-    const layouts = getSavedLayouts();
-    if (!layouts[name]) {
-      setLayoutStatus("Layout not found.");
-      return;
-    }
-    delete layouts[name];
-    saveLayouts(layouts);
-    populateSavedLayouts();
-    setLayoutStatus(`Deleted layout "${name}".`);
+    const deleted = await deleteLayoutByName(name);
+    await populateSavedLayouts();
+    setLayoutStatus(deleted ? `Deleted layout "${name}".` : `Deleted layout "${name}" (local fallback).`);
   });
 }
 
@@ -2193,9 +2476,9 @@ sheetTabSelect.addEventListener("change", () => {
   loadSheetRows();
 });
 
-function boot() {
+async function boot() {
   initLayoutSelect();
-  populateSavedLayouts();
+  await populateSavedLayouts();
   const savedTemplate = localStorage.getItem("scaled-image-edit-template");
   if (savedTemplate) {
     try {

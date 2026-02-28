@@ -26,8 +26,9 @@ If the default CSV does not auto-load, click **Load default CSV** or pick a file
 ## What works
 
 - 1080x1080 canvas with layout presets + freeform editing
+- Includes a "Four Squares (2x2)" preset for four equal square image slots
 - Unlimited layers: images, text, shapes (with backup columns)
-- Drag layers; shift-drag on image layers to move the frame
+- Drag layers; image layers move by default, shift-drag to move the crop inside the frame
 - Scroll on image layers to zoom in/out (range 0.3–4)
 - Text blocks with {column} tokens, typography controls, and backup columns
 - Export to Google Sheets: uploads to GCS and writes URL into selected column

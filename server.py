@@ -5,11 +5,14 @@ import time
 from typing import List, Optional
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import google.auth
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from google.cloud import firestore
 from google.cloud import storage
 from urllib.request import Request, urlopen
 from urllib.error import URLError, HTTPError
@@ -33,8 +36,10 @@ load_env()
 
 SHEETS_SCOPES = ["https://www.googleapis.com/auth/spreadsheets"]
 GCS_SCOPES = ["https://www.googleapis.com/auth/devstorage.read_write"]
-SCOPES = list(set(SHEETS_SCOPES + GCS_SCOPES))
+FIRESTORE_SCOPES = ["https://www.googleapis.com/auth/datastore"]
+SCOPES = list(set(SHEETS_SCOPES + GCS_SCOPES + FIRESTORE_SCOPES))
 
+BASE_DIR = os.path.dirname(__file__)
 app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
@@ -43,15 +48,19 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"] ,
 )
+app.mount("/static", StaticFiles(directory=BASE_DIR), name="static")
 
 
 def get_credentials():
     cred_path = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if not cred_path:
-        raise RuntimeError("GOOGLE_APPLICATION_CREDENTIALS not set")
-    if not os.path.exists(cred_path):
-        raise RuntimeError(f"Credentials file not found: {cred_path}")
-    return service_account.Credentials.from_service_account_file(cred_path, scopes=SCOPES)
+    if cred_path:
+        if not os.path.exists(cred_path):
+            raise RuntimeError(f"Credentials file not found: {cred_path}")
+        return service_account.Credentials.from_service_account_file(cred_path, scopes=SCOPES)
+    credentials, _ = google.auth.default(scopes=SCOPES)
+    if not credentials:
+        raise RuntimeError("Google credentials not available")
+    return credentials
 
 
 def get_sheets_service():
@@ -61,7 +70,22 @@ def get_sheets_service():
 
 def get_storage_client():
     creds = get_credentials()
-    return storage.Client(project=creds.project_id, credentials=creds)
+    project_id = get_firestore_project_id()
+    return storage.Client(project=project_id, credentials=creds)
+
+
+def get_firestore_project_id():
+    env_project = os.environ.get("GOOGLE_CLOUD_PROJECT") or os.environ.get("GCP_PROJECT")
+    if env_project:
+        return env_project
+    creds = get_credentials()
+    return getattr(creds, "project_id", None)
+
+
+def get_firestore_client():
+    project_id = get_firestore_project_id()
+    creds = get_credentials()
+    return firestore.Client(project=project_id, credentials=creds)
 
 
 def get_sheet_id(sheet_id: Optional[str]):
@@ -105,6 +129,16 @@ class UploadRequest(BaseModel):
     header_row: int = 1
     output_columns: UploadColumns = UploadColumns()
     data_url: str
+
+
+class LayoutPayload(BaseModel):
+    name: str
+    template: dict
+
+
+@app.get("/")
+def root():
+    return FileResponse(os.path.join(BASE_DIR, "index.html"))
 
 
 @app.get("/api/config")
@@ -167,6 +201,59 @@ def api_rows(sheet_id: Optional[str] = None, tab: Optional[str] = None, limit: i
     columns = values[0]
     rows = values[1:]
     return {"columns": columns, "rows": rows, "headerRow": start_row}
+
+
+@app.get("/api/layouts")
+def api_layouts(name: Optional[str] = None):
+    db = get_firestore_client()
+    collection = db.collection("layouts")
+    if name:
+        doc = collection.document(name).get()
+        if not doc.exists:
+            raise HTTPException(status_code=404, detail="Not found")
+        data = doc.to_dict() or {}
+        template = data.get("template")
+        if template is None:
+            raise HTTPException(status_code=404, detail="Not found")
+        return {"name": name, "template": template}
+
+    layouts = []
+    try:
+        docs = collection.order_by("updated_at", direction=firestore.Query.DESCENDING).stream()
+    except Exception:
+        docs = collection.stream()
+    for doc in docs:
+        layouts.append({"name": doc.id})
+    return {"layouts": layouts}
+
+
+@app.post("/api/layouts")
+def api_layouts_save(payload: LayoutPayload):
+    name = (payload.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="name and template required")
+    db = get_firestore_client()
+    doc_ref = db.collection("layouts").document(name)
+    existing = doc_ref.get()
+    data = {
+        "name": name,
+        "template": payload.template,
+        "updated_at": firestore.SERVER_TIMESTAMP,
+    }
+    if not existing.exists:
+        data["created_at"] = firestore.SERVER_TIMESTAMP
+    doc_ref.set(data, merge=True)
+    return {"name": name}
+
+
+@app.delete("/api/layouts")
+def api_layouts_delete(name: Optional[str] = None):
+    if not name:
+        raise HTTPException(status_code=400, detail="name required")
+    db = get_firestore_client()
+    doc_ref = db.collection("layouts").document(name)
+    doc_ref.delete()
+    return {"ok": True}
 
 
 @app.post("/api/upload")
@@ -254,7 +341,15 @@ def api_upload(payload: UploadRequest):
     }
 
 
+def get_port() -> int:
+    value = os.environ.get("PORT", "3001")
+    try:
+        return int(value)
+    except ValueError:
+        return 3001
+
+
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run(app, host="0.0.0.0", port=3001)
+    uvicorn.run(app, host="0.0.0.0", port=get_port())
