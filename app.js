@@ -26,6 +26,7 @@ const deleteLayoutBtn = document.getElementById("deleteLayout");
 const layoutStatus = document.getElementById("layoutStatus");
 const toggleGuides = document.getElementById("toggleGuides");
 const resetPlacement = document.getElementById("resetPlacement");
+const undoLayoutBtn = document.getElementById("undoLayout");
 const addImageBtn = document.getElementById("addImage");
 const addTextBtn = document.getElementById("addText");
 const addShapeBtn = document.getElementById("addShape");
@@ -348,10 +349,51 @@ const state = {
   showGuides: false,
   showMaxWidthGuide: false,
   dragging: null,
+  undoStack: [],
+  lastWheelUndoAt: 0,
   dataSource: "csv",
   sheetId: "",
   sheetTab: "",
 };
+
+const MAX_UNDO_STEPS = 10;
+
+function buildUndoSnapshot() {
+  return {
+    template: serializeTemplate(),
+    selectedLayerId: state.selectedLayerId,
+  };
+}
+
+function getUndoSnapshotSignature(snapshot) {
+  return JSON.stringify(snapshot);
+}
+
+function updateUndoButton() {
+  if (!undoLayoutBtn) return;
+  const canUndo = state.undoStack.length > 0;
+  undoLayoutBtn.disabled = !canUndo;
+  undoLayoutBtn.title = canUndo ? `Undo (${state.undoStack.length} available)` : "Nothing to undo";
+}
+
+function pushUndoSnapshot(snapshot = buildUndoSnapshot()) {
+  const signature = getUndoSnapshotSignature(snapshot);
+  const last = state.undoStack[state.undoStack.length - 1];
+  if (last && last.signature === signature) {
+    updateUndoButton();
+    return;
+  }
+  state.undoStack.push({ snapshot, signature });
+  if (state.undoStack.length > MAX_UNDO_STEPS) {
+    state.undoStack.shift();
+  }
+  updateUndoButton();
+}
+
+function clearUndoHistory() {
+  state.undoStack = [];
+  updateUndoButton();
+}
 
 function createId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -769,9 +811,10 @@ function ensureDefaultColumns() {
   renderInspector();
 }
 
-function applyPreset(key) {
+function applyPreset(key, { recordUndo = true } = {}) {
   const preset = PRESETS[key];
   if (!preset) return;
+  if (recordUndo) pushUndoSnapshot();
   state.layers = preset.build();
   state.selectedLayerId = state.layers[0]?.id || null;
   ensureDefaultColumns();
@@ -779,6 +822,7 @@ function applyPreset(key) {
   renderLayersList();
   renderInspector();
   render();
+  updateUndoButton();
 }
 
 function refreshLayerImages(rowIndex = state.currentRowIndex, version = state.rowVersion) {
@@ -1210,6 +1254,7 @@ function renderLayersList() {
     visBtn.className = "ghost tiny";
     visBtn.textContent = layer.visible ? "Hide" : "Show";
     visBtn.addEventListener("click", () => {
+      pushUndoSnapshot();
       layer.visible = !layer.visible;
       renderLayersList();
       render();
@@ -1219,6 +1264,7 @@ function renderLayersList() {
     deleteBtn.className = "ghost tiny";
     deleteBtn.textContent = "Delete";
     deleteBtn.addEventListener("click", () => {
+      pushUndoSnapshot();
       state.layers = state.layers.filter((itemLayer) => itemLayer.id !== layer.id);
       if (state.selectedLayerId === layer.id) {
         state.selectedLayerId = state.layers[0]?.id || null;
@@ -1240,6 +1286,7 @@ function renderLayersList() {
 
 function moveLayer(fromIndex, toIndex) {
   if (toIndex < 0 || toIndex >= state.layers.length) return;
+  pushUndoSnapshot();
   const layers = [...state.layers];
   const [moved] = layers.splice(fromIndex, 1);
   layers.splice(toIndex, 0, moved);
@@ -1307,6 +1354,7 @@ function renderInspector() {
         if (!file) return;
         const reader = new FileReader();
         reader.onload = () => {
+          pushUndoSnapshot();
           layer.staticUrl = reader.result;
           layer.staticName = file.name;
           loadImageForLayer(layer);
@@ -1336,6 +1384,7 @@ function renderInspector() {
       clearBtn.className = "ghost";
       clearBtn.textContent = "Clear static image";
       clearBtn.addEventListener("click", () => {
+        pushUndoSnapshot();
         layer.staticUrl = "";
         layer.staticName = "";
         loadImageForLayer(layer);
@@ -1410,6 +1459,7 @@ function renderInspector() {
     centerBtn.className = "ghost";
     centerBtn.textContent = "Center image";
     centerBtn.addEventListener("click", () => {
+      pushUndoSnapshot();
       layer.offsetX = 0;
       layer.offsetY = 0;
       render();
@@ -1418,6 +1468,7 @@ function renderInspector() {
     fitBtn.className = "ghost";
     fitBtn.textContent = "Fit";
     fitBtn.addEventListener("click", () => {
+      pushUndoSnapshot();
       layer.zoom = 1;
       layer.offsetX = 0;
       layer.offsetY = 0;
@@ -1535,6 +1586,7 @@ function renderInspector() {
     insertBtn.className = "ghost";
     insertBtn.textContent = "Insert column token";
     insertBtn.addEventListener("click", () => {
+      pushUndoSnapshot();
       layer.template = `${layer.template} {${columnSelect.value}}`;
       renderInspector();
       render();
@@ -1631,7 +1683,17 @@ function makeInputRow(labelText, layer, field, type, onChange, step = null) {
   input.type = type;
   input.value = layer[field] ?? "";
   if (step !== null) input.step = step;
+  let didCaptureUndo = false;
+  const resetUndoCapture = () => {
+    didCaptureUndo = false;
+  };
+  input.addEventListener("focus", resetUndoCapture);
+  input.addEventListener("blur", resetUndoCapture);
   input.addEventListener("input", () => {
+    if (!didCaptureUndo) {
+      pushUndoSnapshot();
+      didCaptureUndo = true;
+    }
     const value = type === "number" ? Number(input.value) : input.value;
     layer[field] = value;
     onChange?.(value);
@@ -1668,9 +1730,20 @@ function makeNumberRow(
   rangeInput.step = step;
   rangeInput.value = layer[field] ?? 0;
 
+  let didCaptureUndo = false;
+  const resetUndoCapture = () => {
+    didCaptureUndo = false;
+  };
+  const captureUndo = () => {
+    if (didCaptureUndo) return;
+    pushUndoSnapshot();
+    didCaptureUndo = true;
+  };
+
   const setValue = (raw) => {
     const num = Number(raw);
     if (Number.isNaN(num)) return;
+    captureUndo();
     layer[field] = num;
     numberInput.value = num;
     rangeInput.value = num;
@@ -1679,6 +1752,12 @@ function makeNumberRow(
 
   numberInput.addEventListener("input", () => setValue(numberInput.value));
   rangeInput.addEventListener("input", () => setValue(rangeInput.value));
+  numberInput.addEventListener("focus", resetUndoCapture);
+  numberInput.addEventListener("blur", resetUndoCapture);
+  rangeInput.addEventListener("focus", resetUndoCapture);
+  rangeInput.addEventListener("blur", resetUndoCapture);
+  rangeInput.addEventListener("pointerdown", resetUndoCapture);
+  rangeInput.addEventListener("pointerup", resetUndoCapture);
 
   if (onGuideChange) {
     const enableGuide = () => onGuideChange(true);
@@ -1721,6 +1800,7 @@ function makeSelectRowWithNone(labelText, layer, field, options, onChange) {
   });
   select.value = layer[field] ?? "";
   select.addEventListener("change", () => {
+    pushUndoSnapshot();
     layer[field] = select.value;
     onChange?.(select.value);
   });
@@ -1748,6 +1828,7 @@ function makeSelectRow(labelText, layer, field, options, onChange) {
   });
   select.value = layer[field] ?? "";
   select.addEventListener("change", () => {
+    pushUndoSnapshot();
     layer[field] = select.value;
     onChange?.(select.value);
   });
@@ -1799,6 +1880,7 @@ function addLayer(type) {
     layer = createShapeLayer("Shape", 200, 200, 300, 200);
   }
   if (!layer) return;
+  pushUndoSnapshot();
   state.layers.push(layer);
   selectLayer(layer.id);
   renderLayersList();
@@ -1829,6 +1911,8 @@ canvas.addEventListener("pointerdown", (event) => {
         startX: x,
         startY: y,
         base: { ...selectedLayer },
+        undoSnapshot: buildUndoSnapshot(),
+        didMutate: false,
       };
       canvas.setPointerCapture(event.pointerId);
       return;
@@ -1846,6 +1930,8 @@ canvas.addEventListener("pointerdown", (event) => {
         startX: x,
         startY: y,
         base: { ...hitLayer },
+        undoSnapshot: buildUndoSnapshot(),
+        didMutate: false,
       };
     } else {
       state.dragging = {
@@ -1854,6 +1940,8 @@ canvas.addEventListener("pointerdown", (event) => {
         startX: x,
         startY: y,
         base: { ...hitLayer },
+        undoSnapshot: buildUndoSnapshot(),
+        didMutate: false,
       };
     }
     canvas.setPointerCapture(event.pointerId);
@@ -1872,17 +1960,20 @@ canvas.addEventListener("pointermove", (event) => {
   if (state.dragging.type === "move") {
     layer.x = state.dragging.base.x + (x - state.dragging.startX);
     layer.y = state.dragging.base.y + (y - state.dragging.startY);
+    state.dragging.didMutate = true;
   }
 
   if (state.dragging.type === "move-frame") {
     layer.x = state.dragging.base.x + (x - state.dragging.startX);
     layer.y = state.dragging.base.y + (y - state.dragging.startY);
+    state.dragging.didMutate = true;
   }
 
   if (state.dragging.type === "move-image") {
     layer.offsetX = state.dragging.base.offsetX + (x - state.dragging.startX);
     layer.offsetY = state.dragging.base.offsetY + (y - state.dragging.startY);
     clampImageOffset(layer);
+    state.dragging.didMutate = true;
   }
 
   if (state.dragging.type === "resize") {
@@ -1909,6 +2000,7 @@ canvas.addEventListener("pointermove", (event) => {
       layer.w = Math.max(20, base.w + dx);
       layer.h = Math.max(20, base.h + dy);
     }
+    state.dragging.didMutate = true;
   }
 
   renderInspector();
@@ -1917,6 +2009,9 @@ canvas.addEventListener("pointermove", (event) => {
 
 canvas.addEventListener("pointerup", (event) => {
   if (state.dragging) {
+    if (state.dragging.didMutate && state.dragging.undoSnapshot) {
+      pushUndoSnapshot(state.dragging.undoSnapshot);
+    }
     state.dragging = null;
   }
   canvas.releasePointerCapture(event.pointerId);
@@ -1927,6 +2022,11 @@ canvas.addEventListener("wheel", (event) => {
   const layer = hitTestLayer(x, y);
   if (!layer || layer.type !== "image") return;
   event.preventDefault();
+  const now = Date.now();
+  if (now - state.lastWheelUndoAt > 250) {
+    pushUndoSnapshot();
+    state.lastWheelUndoAt = now;
+  }
   const delta = event.deltaY < 0 ? 0.05 : -0.05;
   layer.zoom = Math.min(4, Math.max(0.3, layer.zoom + delta));
   clampImageOffset(layer);
@@ -1948,6 +2048,7 @@ toggleGuides.addEventListener("change", (event) => {
 });
 
 resetPlacement.addEventListener("click", () => {
+  pushUndoSnapshot();
   state.layers.forEach((layer) => {
     if (layer.type === "image") {
       layer.zoom = 1;
@@ -1981,6 +2082,30 @@ loadDefaultCsvBtn.addEventListener("click", async () => {
 addImageBtn.addEventListener("click", () => addLayer("image"));
 addTextBtn.addEventListener("click", () => addLayer("text"));
 addShapeBtn.addEventListener("click", () => addLayer("shape"));
+
+if (undoLayoutBtn) {
+  undoLayoutBtn.addEventListener("click", () => {
+    undoLastChange();
+  });
+}
+
+document.addEventListener("keydown", (event) => {
+  const isUndoKey = (event.metaKey || event.ctrlKey) && !event.shiftKey && event.key.toLowerCase() === "z";
+  if (!isUndoKey) return;
+  const target = event.target;
+  if (
+    target instanceof HTMLElement &&
+    (target.tagName === "INPUT" ||
+      target.tagName === "TEXTAREA" ||
+      target.tagName === "SELECT" ||
+      target.isContentEditable)
+  ) {
+    return;
+  }
+  if (!state.undoStack.length) return;
+  event.preventDefault();
+  undoLastChange();
+});
 
 exportSheetBtn.addEventListener("click", async () => {
   if (state.dataSource !== "sheets") {
@@ -2196,7 +2321,7 @@ function serializeTemplate() {
   };
 }
 
-function applyTemplate(template) {
+function applyTemplateLayers(template, { selectedLayerId = null, ensureColumns = true } = {}) {
   if (!template || !Array.isArray(template.layers)) return;
   state.layers = template.layers.map((layer) => ({
     ...layer,
@@ -2205,12 +2330,33 @@ function applyTemplate(template) {
     staticName: layer.staticName || "",
     image: null,
   }));
-  state.selectedLayerId = state.layers[0]?.id || null;
-  ensureDefaultColumns();
+  if (selectedLayerId && state.layers.some((layer) => layer.id === selectedLayerId)) {
+    state.selectedLayerId = selectedLayerId;
+  } else {
+    state.selectedLayerId = state.layers[0]?.id || null;
+  }
+  if (ensureColumns) ensureDefaultColumns();
   refreshLayerImages();
   renderLayersList();
   renderInspector();
   render();
+}
+
+function applyTemplate(template, { recordUndo = true, ensureColumns = true, selectedLayerId = null } = {}) {
+  if (!template || !Array.isArray(template.layers)) return;
+  if (recordUndo) pushUndoSnapshot();
+  applyTemplateLayers(template, { selectedLayerId, ensureColumns });
+  updateUndoButton();
+}
+
+function undoLastChange() {
+  if (!state.undoStack.length) return;
+  const entry = state.undoStack.pop();
+  applyTemplateLayers(entry.snapshot.template, {
+    selectedLayerId: entry.snapshot.selectedLayerId,
+    ensureColumns: false,
+  });
+  updateUndoButton();
 }
 
 function populateOutputColumnSelects() {
@@ -2482,16 +2628,17 @@ async function boot() {
   const savedTemplate = localStorage.getItem("scaled-image-edit-template");
   if (savedTemplate) {
     try {
-      applyTemplate(JSON.parse(savedTemplate));
+      applyTemplate(JSON.parse(savedTemplate), { recordUndo: false });
     } catch (error) {
-      applyPreset("leftSquareRightFull");
+      applyPreset("leftSquareRightFull", { recordUndo: false });
     }
   } else {
-    applyPreset("leftSquareRightFull");
+    applyPreset("leftSquareRightFull", { recordUndo: false });
   }
   renderLayersList();
   renderInspector();
   render();
+  clearUndoHistory();
 
   fetchConfig();
   wireOutputColumnSelect(urlColumnSelect, urlColumnCustom);

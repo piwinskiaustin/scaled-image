@@ -159,6 +159,11 @@ button:hover {
   opacity: 0.92;
 }
 
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 .meta,
 .hint,
 .value {
