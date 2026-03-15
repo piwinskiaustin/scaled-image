@@ -10,6 +10,10 @@ function resolveApiBase() {
 const API_BASE = resolveApiBase();
 const canvas = document.getElementById("preview");
 const ctx = canvas.getContext("2d");
+const BASE_CANVAS_WIDTH = canvas.width;
+const BASE_CANVAS_HEIGHT = canvas.height;
+let activeCanvas = canvas;
+let activeCtx = ctx;
 
 const csvFileInput = document.getElementById("csvFile");
 const loadDefaultCsvBtn = document.getElementById("loadDefaultCsv");
@@ -48,6 +52,8 @@ const sheetStatus = document.getElementById("sheetStatus");
 
 const urlColumnSelect = document.getElementById("urlColumnSelect");
 const urlColumnCustom = document.getElementById("urlColumnCustom");
+const exportScaleSelect = document.getElementById("exportScale");
+const exportMeta = document.getElementById("exportMeta");
 
 const previewGallery = document.getElementById("previewGallery");
 const previewStartRowInput = document.getElementById("previewStartRow");
@@ -357,6 +363,7 @@ const state = {
 };
 
 const MAX_UNDO_STEPS = 10;
+const DEFAULT_EXPORT_SCALE = 4;
 
 function buildUndoSnapshot() {
   return {
@@ -605,6 +612,21 @@ function setBulkStatus(message) {
 function setPreviewStatus(message) {
   if (!previewStatus) return;
   previewStatus.textContent = message;
+}
+
+function getExportScale() {
+  const rawValue = exportScaleSelect?.value || DEFAULT_EXPORT_SCALE;
+  const scale = Number(rawValue);
+  if (!Number.isFinite(scale) || scale < 1) return DEFAULT_EXPORT_SCALE;
+  return scale;
+}
+
+function updateExportMeta() {
+  if (!exportMeta) return;
+  const scale = getExportScale();
+  const width = BASE_CANVAS_WIDTH * scale;
+  const height = BASE_CANVAS_HEIGHT * scale;
+  exportMeta.textContent = `PNG export size: ${width} x ${height}px`;
 }
 
 function parseCSV(text) {
@@ -955,14 +977,14 @@ function resolveTemplate(layer, row) {
 
 function wrapText(text, font, maxWidth) {
   if (!maxWidth || maxWidth <= 0) return [text];
-  ctx.font = font;
+  activeCtx.font = font;
   const words = text.split(/\s+/);
   const lines = [];
   let line = "";
 
   words.forEach((word) => {
     const test = line ? `${line} ${word}` : word;
-    const width = ctx.measureText(test).width;
+    const width = activeCtx.measureText(test).width;
     if (width > maxWidth && line) {
       lines.push(line);
       line = word;
@@ -980,7 +1002,7 @@ function measureText(layer, row) {
   const font = `${layer.fontWeight} ${layer.fontSize}px ${layer.fontFamily}`;
   const lines = wrapText(text, font, layer.maxWidth);
   const lineHeight = layer.fontSize * (layer.lineHeight || 1.2);
-  const widths = lines.map((line) => ctx.measureText(line).width);
+  const widths = lines.map((line) => activeCtx.measureText(line).width);
   const width = widths.length ? Math.max(...widths) : 0;
   const height = lines.length * lineHeight;
   return { text, lines, lineHeight, width, height, font };
@@ -1018,13 +1040,20 @@ function getMaxWidthBounds(layer, row) {
   };
 }
 
-function render() {
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+function render({
+  scale = 1,
+  showGuides = state.showGuides,
+  showMaxWidthGuide = state.showMaxWidthGuide,
+  selectedLayerId = state.selectedLayerId,
+  skipAutoSave = false,
+} = {}) {
+  activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+  activeCtx.imageSmoothingEnabled = true;
+  activeCtx.imageSmoothingQuality = "high";
+  activeCtx.clearRect(0, 0, activeCanvas.width, activeCanvas.height);
+  activeCtx.setTransform(scale, 0, 0, scale, 0, 0);
+  activeCtx.fillStyle = "#ffffff";
+  activeCtx.fillRect(0, 0, BASE_CANVAS_WIDTH, BASE_CANVAS_HEIGHT);
   const row = state.rows[state.currentRowIndex] || {};
 
   state.layers.forEach((layer) => {
@@ -1038,17 +1067,20 @@ function render() {
     }
   });
 
-  if (state.showGuides || state.showMaxWidthGuide) {
-    drawGuides(row);
+  if (showGuides || showMaxWidthGuide) {
+    drawGuides(row, { showGuides, showMaxWidthGuide, selectedLayerId });
   }
-  scheduleAutoSave();
+  activeCtx.setTransform(1, 0, 0, 1, 0, 0);
+  if (!skipAutoSave) {
+    scheduleAutoSave();
+  }
 }
 
 function drawImageLayer(layer) {
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(layer.x, layer.y, layer.w, layer.h);
-  ctx.clip();
+  activeCtx.save();
+  activeCtx.beginPath();
+  activeCtx.rect(layer.x, layer.y, layer.w, layer.h);
+  activeCtx.clip();
 
   if (layer.image) {
     const img = layer.image;
@@ -1059,85 +1091,86 @@ function drawImageLayer(layer) {
     const centerY = layer.y + layer.h / 2 + layer.offsetY;
     const dx = centerX - drawW / 2;
     const dy = centerY - drawH / 2;
-    ctx.drawImage(img, dx, dy, drawW, drawH);
+    activeCtx.drawImage(img, dx, dy, drawW, drawH);
   } else {
-    ctx.fillStyle = "#f1ede7";
-    ctx.fillRect(layer.x, layer.y, layer.w, layer.h);
-    ctx.fillStyle = "#9b8a7b";
-    ctx.font = "14px Space Grotesk";
-    ctx.textAlign = "center";
-    ctx.fillText("No image", layer.x + layer.w / 2, layer.y + layer.h / 2);
+    activeCtx.fillStyle = "#f1ede7";
+    activeCtx.fillRect(layer.x, layer.y, layer.w, layer.h);
+    activeCtx.fillStyle = "#9b8a7b";
+    activeCtx.font = "14px Space Grotesk";
+    activeCtx.textAlign = "center";
+    activeCtx.fillText("No image", layer.x + layer.w / 2, layer.y + layer.h / 2);
   }
-  ctx.restore();
+  activeCtx.restore();
 }
 
 function drawTextLayer(layer, row) {
   const measurement = measureText(layer, row);
-  ctx.font = measurement.font;
-  ctx.fillStyle = layer.color || "#111";
-  ctx.textAlign = layer.align || "left";
-  ctx.textBaseline = "top";
+  activeCtx.font = measurement.font;
+  activeCtx.fillStyle = layer.color || "#111";
+  activeCtx.textAlign = layer.align || "left";
+  activeCtx.textBaseline = "top";
 
   measurement.lines.forEach((line, index) => {
-    ctx.fillText(line, layer.x, layer.y + index * measurement.lineHeight);
+    activeCtx.fillText(line, layer.x, layer.y + index * measurement.lineHeight);
   });
 }
 
 function drawShapeLayer(layer) {
   const radius = Math.min(layer.radius || 0, layer.w / 2, layer.h / 2);
-  ctx.save();
-  ctx.beginPath();
+  activeCtx.save();
+  activeCtx.beginPath();
   roundedRectPath(layer.x, layer.y, layer.w, layer.h, radius);
-  ctx.fillStyle = layer.fill || "#f1ede7";
-  ctx.fill();
+  activeCtx.fillStyle = layer.fill || "#f1ede7";
+  activeCtx.fill();
   if (layer.strokeWidth > 0) {
-    ctx.strokeStyle = layer.stroke || "#9b8a7b";
-    ctx.lineWidth = layer.strokeWidth;
-    ctx.stroke();
+    activeCtx.strokeStyle = layer.stroke || "#9b8a7b";
+    activeCtx.lineWidth = layer.strokeWidth;
+    activeCtx.stroke();
   }
-  ctx.restore();
+  activeCtx.restore();
 }
 
 function roundedRectPath(x, y, w, h, r) {
-  ctx.moveTo(x + r, y);
-  ctx.lineTo(x + w - r, y);
-  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-  ctx.lineTo(x + w, y + h - r);
-  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-  ctx.lineTo(x + r, y + h);
-  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-  ctx.lineTo(x, y + r);
-  ctx.quadraticCurveTo(x, y, x + r, y);
+  activeCtx.moveTo(x + r, y);
+  activeCtx.lineTo(x + w - r, y);
+  activeCtx.quadraticCurveTo(x + w, y, x + w, y + r);
+  activeCtx.lineTo(x + w, y + h - r);
+  activeCtx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  activeCtx.lineTo(x + r, y + h);
+  activeCtx.quadraticCurveTo(x, y + h, x, y + h - r);
+  activeCtx.lineTo(x, y + r);
+  activeCtx.quadraticCurveTo(x, y, x + r, y);
 }
 
-function drawGuides(row) {
+function drawGuides(row, { showGuides, showMaxWidthGuide, selectedLayerId }) {
   state.layers.forEach((layer) => {
     if (!layer.visible) return;
-    if (state.showGuides && (layer.type === "image" || layer.type === "shape")) {
-      ctx.strokeStyle = layer.id === state.selectedLayerId ? "rgba(208, 122, 74, 0.8)" : "rgba(208, 122, 74, 0.4)";
-      ctx.lineWidth = layer.id === state.selectedLayerId ? 2 : 1;
-      ctx.strokeRect(layer.x + 1, layer.y + 1, layer.w - 2, layer.h - 2);
-      if (layer.id === state.selectedLayerId) {
+    if (showGuides && (layer.type === "image" || layer.type === "shape")) {
+      activeCtx.strokeStyle =
+        layer.id === selectedLayerId ? "rgba(208, 122, 74, 0.8)" : "rgba(208, 122, 74, 0.4)";
+      activeCtx.lineWidth = layer.id === selectedLayerId ? 2 : 1;
+      activeCtx.strokeRect(layer.x + 1, layer.y + 1, layer.w - 2, layer.h - 2);
+      if (layer.id === selectedLayerId) {
         drawHandles(layer);
       }
     }
     if (
       layer.type === "text" &&
-      layer.id === state.selectedLayerId &&
-      (state.showGuides || state.showMaxWidthGuide)
+      layer.id === selectedLayerId &&
+      (showGuides || showMaxWidthGuide)
     ) {
       const bounds = getTextBounds(layer, row);
-      ctx.strokeStyle = "rgba(75, 50, 30, 0.5)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
+      activeCtx.strokeStyle = "rgba(75, 50, 30, 0.5)";
+      activeCtx.lineWidth = 1;
+      activeCtx.strokeRect(bounds.x - 4, bounds.y - 4, bounds.width + 8, bounds.height + 8);
 
       if (layer.maxWidth > 0) {
         const maxBounds = getMaxWidthBounds(layer, row);
-        ctx.save();
-        ctx.setLineDash([6, 4]);
-        ctx.strokeStyle = "rgba(208, 122, 74, 0.7)";
-        ctx.strokeRect(maxBounds.x, maxBounds.y, maxBounds.width, maxBounds.height);
-        ctx.restore();
+        activeCtx.save();
+        activeCtx.setLineDash([6, 4]);
+        activeCtx.strokeStyle = "rgba(208, 122, 74, 0.7)";
+        activeCtx.strokeRect(maxBounds.x, maxBounds.y, maxBounds.width, maxBounds.height);
+        activeCtx.restore();
       }
     }
   });
@@ -1145,14 +1178,14 @@ function drawGuides(row) {
 
 function drawHandles(layer) {
   const handles = getHandlePoints(layer);
-  ctx.fillStyle = "#ffffff";
-  ctx.strokeStyle = "#d07a4a";
-  ctx.lineWidth = 2;
+  activeCtx.fillStyle = "#ffffff";
+  activeCtx.strokeStyle = "#d07a4a";
+  activeCtx.lineWidth = 2;
   handles.forEach((pt) => {
-    ctx.beginPath();
-    ctx.rect(pt.x - 5, pt.y - 5, 10, 10);
-    ctx.fill();
-    ctx.stroke();
+    activeCtx.beginPath();
+    activeCtx.rect(pt.x - 5, pt.y - 5, 10, 10);
+    activeCtx.fill();
+    activeCtx.stroke();
   });
 }
 
@@ -2432,6 +2465,32 @@ function getSelectedOutputColumn() {
   return getOutputColumn(urlColumnSelect, urlColumnCustom);
 }
 
+function renderToDataUrl({ format = "image/png", quality, scale = 1 } = {}) {
+  const targetCanvas = document.createElement("canvas");
+  targetCanvas.width = BASE_CANVAS_WIDTH * scale;
+  targetCanvas.height = BASE_CANVAS_HEIGHT * scale;
+  const targetCtx = targetCanvas.getContext("2d");
+  const previousCanvas = activeCanvas;
+  const previousCtx = activeCtx;
+
+  try {
+    activeCanvas = targetCanvas;
+    activeCtx = targetCtx;
+    render({
+      scale,
+      showGuides: false,
+      showMaxWidthGuide: false,
+      selectedLayerId: null,
+      skipAutoSave: true,
+    });
+  } finally {
+    activeCanvas = previousCanvas;
+    activeCtx = previousCtx;
+  }
+
+  return targetCanvas.toDataURL(format, quality);
+}
+
 async function ensureRowReady(rowIndex) {
   const version = bumpRowVersion();
   state.currentRowIndex = rowIndex;
@@ -2489,29 +2548,11 @@ async function uploadRowToSheet(rowIndex, urlColumn, dataUrl) {
 }
 
 function getPreviewDataUrl() {
-  const prevGuides = state.showGuides;
-  const prevSelected = state.selectedLayerId;
-  state.showGuides = false;
-  state.selectedLayerId = null;
-  render();
-  const dataUrl = canvas.toDataURL("image/jpeg", 0.8);
-  state.showGuides = prevGuides;
-  state.selectedLayerId = prevSelected;
-  render();
-  return dataUrl;
+  return renderToDataUrl({ format: "image/jpeg", quality: 0.8, scale: 1 });
 }
 
 function getExportDataUrl() {
-  const prevGuides = state.showGuides;
-  const prevSelected = state.selectedLayerId;
-  state.showGuides = false;
-  state.selectedLayerId = null;
-  render();
-  const dataUrl = canvas.toDataURL("image/png");
-  state.showGuides = prevGuides;
-  state.selectedLayerId = prevSelected;
-  render();
-  return dataUrl;
+  return renderToDataUrl({ format: "image/png", scale: getExportScale() });
 }
 
 function setDataSource(source) {
@@ -2625,6 +2666,11 @@ sheetTabSelect.addEventListener("change", () => {
 async function boot() {
   initLayoutSelect();
   await populateSavedLayouts();
+  if (exportScaleSelect) {
+    exportScaleSelect.value = String(DEFAULT_EXPORT_SCALE);
+    exportScaleSelect.addEventListener("change", updateExportMeta);
+  }
+  updateExportMeta();
   const savedTemplate = localStorage.getItem("scaled-image-edit-template");
   if (savedTemplate) {
     try {

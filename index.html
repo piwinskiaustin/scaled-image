@@ -121,6 +121,15 @@
             <input type="text" id="urlColumnCustom" placeholder="New column name" hidden />
           </div>
           <div class="row">
+            <label for="exportScale">Export resolution</label>
+            <select id="exportScale">
+              <option value="1">Standard (1080 x 1080)</option>
+              <option value="2">High (2160 x 2160)</option>
+              <option value="4" selected>Max (4320 x 4320)</option>
+            </select>
+            <div class="meta" id="exportMeta"></div>
+          </div>
+          <div class="row">
             <label>Bulk export range (sheet rows)</label>
             <div class="row inline">
               <div class="stack">
@@ -180,6 +189,6 @@
       </main>
     </div>
 
-    <script src="/static/app.js?v=20260302-undo1"></script>
+    <script src="/static/app.js?v=20260315-exportquality1"></script>
   </body>
 </html>

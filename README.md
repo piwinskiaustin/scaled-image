@@ -5,13 +5,7 @@ Edit one row, apply to all.
 
 ## Run locally
 
-In one terminal (frontend):
-
-```bash
-python3 -m http.server
-```
-
-In another terminal (Sheets + GCS API):
+Run the FastAPI app directly so the editor and API share the same origin:
 
 ```bash
 python3 -m venv .venv
@@ -19,13 +13,13 @@ python3 -m venv .venv
 .venv/bin/python server.py
 ```
 
-Then open http://localhost:8000 in your browser.
+Then open http://127.0.0.1:3001 in your browser.
 
 If the default CSV does not auto-load, click **Load default CSV** or pick a file manually.
 
 ## What works
 
-- 1080x1080 canvas with layout presets + freeform editing
+- 1080x1080 editor canvas with higher-resolution PNG export options
 - Includes a "Four Squares (2x2)" preset for four equal square image slots
 - Unlimited layers: images, text, shapes (with backup columns)
 - Drag layers; image layers move by default, shift-drag to move the crop inside the frame
